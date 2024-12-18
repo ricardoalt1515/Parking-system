@@ -1,0 +1,18 @@
+
+# Usa una imagen de Node.js
+FROM node:18-alpine
+
+# Establece el directorio de trabajo
+WORKDIR /app
+
+# Copia los archivos necesarios del frontend
+COPY ./frontend /app
+
+# Instala las dependencias y compila el proyecto
+RUN npm install && npm run build
+
+# Expone el puerto de Next.js
+EXPOSE 3000
+
+# Comando para iniciar Next.js
+CMD ["npm", "start"]
