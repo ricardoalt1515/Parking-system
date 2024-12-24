@@ -14,6 +14,7 @@ from .database import SessionLocal, engine
 from .models import Base, Auditoria, Ticket
 from .crud import (
     crear_ticket_en_db,
+    generar_codigo_qr,
     obtener_ticket,
     actualizar_estado,
     calcular_total,
@@ -28,7 +29,7 @@ from .config import (
     ConfiguracionSistema,
 )
 from .crud import revalidar_boletos, validar_salida, generar_reporte
-from .schemas import TicketCreate
+from .schemas import TicketCreate, ActualizarEstadoRequest
 
 app = FastAPI()
 
@@ -73,7 +74,8 @@ def listar_tickets(db: Session = Depends(get_db)):
 @app.post("/tickets/")
 def crear_ticket(ticket_data: dict, db: Session = Depends(get_db)):
     nuevo_ticket = crear_ticket_en_db(db, ticket_data)
-    return {"message": "Ticket creado", "ticket": nuevo_ticket}
+    codigo_qr = generar_codigo_qr(nuevo_ticket.folio)
+    return {"message": "Ticket creado", "ticket": nuevo_ticket, "qr_code": codigo_qr}
 
 
 @app.get("/tickets/{ticket_id}")
@@ -103,6 +105,22 @@ def revalidar_tickets(db: Session = Depends(get_db)):
     return {"message": "Boletos revalidados", "cantidad": cantidad}
 
 
+@app.post("/tickets/{folio}/pagar")
+def pagar_ticket(folio: str, db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.folio == folio).first()
+
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado")
+
+    tarifa = calcular_tarifa(ticket.entrada, tarifa_base=20, tarifa_excedente=1)
+    ticket.estado = "Pagado"
+    ticket.tiempo_limite = datetime.utcnow() + timedelta(minutes=15)
+
+    db.commit()
+    db.refresh(ticket)
+    return {"message": "Ticket pagado", "tarifa": tarifa}
+
+
 @app.put("/tickets/{ticket_id}/pagar")
 def pagar_ticket(ticket_id: int, db: Session = Depends(get_db)):
     ticket = actualizar_estado(db, ticket_id, "Pagado")
@@ -115,13 +133,15 @@ def pagar_ticket(ticket_id: int, db: Session = Depends(get_db)):
 
 
 @app.put("/tickets/{folio}")
-def actualizar_estado(folio: str, estado: str, db: Session = Depends(get_db)):
+def actualizar_estado(
+    folio: str, request: ActualizarEstadoRequest, db: Session = Depends(get_db)
+):
     ticket = db.query(Ticket).filter(Ticket.folio == folio).first()
 
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket no encontrado")
 
-    ticket.estado = estado
+    ticket.estado = request.estado
     db.commit()
     db.refresh(ticket)
 

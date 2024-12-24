@@ -42,6 +42,10 @@ class TarifaBase(BaseModel):
     tarifa_excedente: float
 
 
+class ActualizarEstadoRequest(BaseModel):
+    estado: str
+
+
 class UsuarioBase(BaseModel):
     nombre: str
     rol: str

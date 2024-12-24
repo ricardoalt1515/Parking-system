@@ -2,7 +2,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from .models import Ticket, Auditoria
 from .utils import calcular_tarifa
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import qrcode
+from io import BytesIO
+import base64
 
 
 def crear_ticket_en_db(db: Session, ticket_data: dict):
@@ -46,6 +49,19 @@ def calcular_total(
     return 0
 
 
+def generar_codigo_qr(data: str):
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(data)
+    qr.make(fit=True)
+
+    buffer = BytesIO()
+    qr.make_image(fill="black", back_color="white").save(buffer)
+    buffer.seek(0)
+
+    # Retorna la cadena en formato base64
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
 def revalidar_boletos(db: Session):
     """
     Revalida todos los tickets vencidos, cambiando su estado a 'Pendiente'.
@@ -74,7 +90,7 @@ def validar_ticket_para_salida(db: Session, folio: str):
         return {"valid": False, "message": "Ticket no encontrado"}
     if ticket.estado != "Pagado":
         return {"valid": False, "message": "El ticket no está pagado"}
-    if ticket.tiempo_limite and ticket.tiempo_limite < datetime.datetime.utcnow():
+    if ticket.tiempo_limite and ticket.tiempo_limite < datetime.utcnow():
         return {"valid": False, "message": "El ticket ha vencido"}
 
     ticket.estado = "Completado"
@@ -114,6 +130,17 @@ def obtener_auditorias(db: Session, skip: int = 0, limit: int = 50):
         .limit(limit)
         .all()
     )
+
+
+def calcular_tarifa(hora_entrada, tarifa_base, tarifa_excedente):
+    ahora = datetime.utcnow()
+    duracion = (ahora - hora_entrada).total_seconds() / 60  # Duracion en minutpos
+
+    if duracion <= 60:
+        return tarifa_base
+    else:
+        excedente = duracion - 60
+        return tarifa_base + (excedente * tarifa_excedente)
 
 
 def validar_salida(db: Session, ticket_id: int):
