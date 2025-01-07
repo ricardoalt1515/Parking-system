@@ -1,0 +1,26 @@
+
+# Etapa de construcción
+FROM node:18-alpine AS build
+
+WORKDIR /app
+
+# los archivos de dependencias
+COPY package*.json ./
+
+# Instala dependencias
+RUN npm install --production=false
+
+# Copia el resto del frontend
+COPY . .
+
+# Construye (ajusta el script según tu framework: Next, React, etc.)
+RUN npm run build
+
+# Etapa final: un contenedor liviano para servir
+FROM node:18-alpine AS production
+
+WORKDIR /app
+COPY --from=build /app ./
+
+EXPOSE 3000
+CMD ["npm", "run", "start"]
