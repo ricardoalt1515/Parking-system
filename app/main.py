@@ -11,25 +11,29 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from .database import SessionLocal, engine
-from .models import Base, Auditoria, Ticket
+import logging
+from .models import Base, Auditoria, Ticket, ConfiguracionSistema
 from .crud import (
     crear_ticket_en_db,
     generar_codigo_qr,
     obtener_ticket,
     actualizar_estado,
-    calcular_total,
     registrar_auditoria,
+    calcular_tarifa,
     obtener_auditorias,
+    obtener_configuracion,
+    actualizar_configuracion,
     validar_ticket_para_salida,
 )
 from .websockets import manager
 from .config import (
-    obtener_configuracion,
-    actualizar_configuracion,
+    SessionLocal,
     ConfiguracionSistema,
 )
 from .crud import revalidar_boletos, validar_salida, generar_reporte
 from .schemas import TicketCreate, ActualizarEstadoRequest
+from .database import get_db, init_db
+from datetime import datetime, timedelta
 
 app = FastAPI()
 
@@ -42,7 +46,7 @@ app.add_middleware(
 )
 
 # Inicializar base de datos
-Base.metadata.create_all(bind=engine)
+init_db()
 
 
 # Modelo Pydantic para validar el cuerpo de la solicitud
@@ -53,9 +57,11 @@ class ValidarSalidaRequest(BaseModel):
 # Dependencia para la sesión de la base de datos
 def get_db():
     db = SessionLocal()
+    logging.info(f"Instancia de DB creada: {db}")
     try:
         yield db
     finally:
+        logging.info(f"Instancia de DB cerrada: {db}")
         db.close()
 
 
@@ -69,6 +75,55 @@ def listar_tickets(db: Session = Depends(get_db)):
     """
     tickets = db.query(Ticket).all()
     return {"tickets": tickets or []}  # Devuelve un array si no day datos
+
+
+@app.get("/tickets/{folio}")
+def obtener_ticket(folio: str, db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.folio == folio).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado")
+
+    # Configuración de tarifas (puedes obtenerlas desde la base de datos o configuración)
+    tarifa_base = 30.0
+    tarifa_excedente = 15.0
+
+    # Calcular tarifa si el ticket está en estado "Pendiente"
+    tarifa = 0.0
+    if ticket.estado == "Pendiente":
+        tarifa = calcular_tarifa(
+            ticket.entrada, datetime.utcnow(), tarifa_base, tarifa_excedente
+        )
+
+    return {
+        "folio": ticket.folio,
+        "estado": ticket.estado,
+        "tarifa": tarifa,
+        "entrada": ticket.entrada,
+        "tiempo_limite": ticket.tiempo_limite,
+    }
+
+
+@app.post("/tickets/{folio}/{action}")
+def update_ticket_status(folio: str, action: str, db: Session = Depends(get_db)):
+    """Update the status of a ticket by folio."""
+    valid_actions = ["pagar", "cancelar"]
+
+    if action not in valid_actions:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    ticket = db.query(Ticket).filter(Ticket.folio == folio).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if action == "pagar":
+        ticket.estado = "Pagado"
+    elif action == "cancelar":
+        ticket.estado = "Cancelado"
+
+    db.commit()
+    db.refresh(ticket)
+
+    return {"message": f"Ticket {action} correctamente.", "ticket": ticket}
 
 
 @app.post("/tickets/")
@@ -112,7 +167,7 @@ def pagar_ticket(folio: str, db: Session = Depends(get_db)):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket no encontrado")
 
-    tarifa = calcular_tarifa(ticket.entrada, tarifa_base=20, tarifa_excedente=1)
+    tarifa = calcular_tarifa(db, folio, tarifa_base=20, tarifa_excedente=1)
     ticket.estado = "Pagado"
     ticket.tiempo_limite = datetime.utcnow() + timedelta(minutes=15)
 
@@ -148,17 +203,6 @@ def actualizar_estado(
     return {"message": "Estado actualizado", "ticket": ticket}
 
 
-@app.get("/tickets/{ticket_id}/calculo")
-def calcular_tarifa(
-    ticket_id: int,
-    tarifa_base: float,
-    tarifa_excedente: float,
-    db: Session = Depends(get_db),
-):
-    total = calcular_total(db, ticket_id, tarifa_base, tarifa_excedente)
-    return {"total": total}
-
-
 @app.websocket("/ws/tickets/")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
@@ -170,14 +214,18 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
+# Endpoints para obtener y actualizar configuracion
 @app.get("/configuracion/")
-def obtener_config():
-    return obtener_configuracion()
+def obtener_config(db: Session = Depends(get_db)):
+    return obtener_configuracion(db)
 
 
 @app.put("/configuracion/")
-def actualizar_config(nueva_config: ConfiguracionSistema):
-    return actualizar_configuracion(nueva_config)
+def actualizar_config(
+    nueva_config: ConfiguracionSistema, db: Session = Depends(get_db)
+):
+
+    return actualizar_configuracion(db, nueva_config.dict())
 
 
 @app.post("/tickets/{ticket_id}/salida/")

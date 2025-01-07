@@ -1,22 +1,31 @@
 
-# Usa una imagen de Python
-FROM python:3.11-slim
+# Usa Python como base
+FROM python:3.13-slim
+
+# Instala dependencias del sistema necesarias para compilar extensiones
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  build-essential \
+  libpq-dev \
+  gcc \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
 
 # Establece el directorio de trabajo
 WORKDIR /app
 
-# Copia los archivos necesarios del backend
-COPY ./app /app/app
-Run uv sync --frozen --no-cache
+# Copia los archivos de dependencias
+COPY requirements.txt ./requirements.txt
 
-COPY requirements.txt /app/requirements.txt
+# Instala las dependencias del proyecto
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Instala las dependencias con pip o uv
-RUN pip install --no-cache-dir uv && uv venv && uv pip install -r uv.lock
+# Copia el resto del código del backend
+COPY ./app ./app
 
-# Expone el puerto de FastAPI
+# Expone el puerto en el que correrá FastAPI
 EXPOSE 8000
 
-# Comando para iniciar el servidor
-CMD ["/.venv.bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Comando para ejecutar la aplicación con Uvicorn
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 

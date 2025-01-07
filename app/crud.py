@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
-from .models import Ticket, Auditoria
+from .models import Ticket, Auditoria, ConfiguracionSistema
+from .config import SessionLocal
 from .utils import calcular_tarifa
 from datetime import datetime, timedelta, timezone
 import qrcode
@@ -24,29 +25,23 @@ def crear_ticket_en_db(db: Session, ticket_data: dict):
     return nuevo_ticket
 
 
-def obtener_ticket(db: Session, ticket_id: int):
-    return db.query(Ticket).filter(Ticket.id == ticket_id).first()
+def obtener_ticket(db: Session, folio: str = None, ticket_id: int = None):
+    if folio:
+        return db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    elif ticket_id:
+        return db.query(Ticket).filter(Ticker.folio == folio).first()
+    return None
 
 
-def actualizar_estado(db: Session, ticket_id: int, nuevo_estado: str):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+def actualizar_estado(
+    db: Session, folio: str, tarifa_base: float, tarifa_excedente: float
+):
+    ticket = db.query(Ticket).filter(Ticket.folio == folio).first()
     if ticket:
         ticket.estado = nuevo_estado
         db.commit()
         return ticket
     return None
-
-
-def calcular_total(
-    db: Session, ticket_id: int, tarifa_base: float, tarifa_excedente: float
-):
-    ticket = obtener_ticket(db, ticket_id)
-    if ticket and ticket.entrada:
-        tiempo_actual = datetime.datetime.utcnow()
-        return calcular_tarifa(
-            ticket.entrada, tiempo_actual, tarifa_base, tarifa_excedente
-        )
-    return 0
 
 
 def generar_codigo_qr(data: str):
@@ -132,15 +127,20 @@ def obtener_auditorias(db: Session, skip: int = 0, limit: int = 50):
     )
 
 
-def calcular_tarifa(hora_entrada, tarifa_base, tarifa_excedente):
-    ahora = datetime.utcnow()
-    duracion = (ahora - hora_entrada).total_seconds() / 60  # Duracion en minutpos
+def calcular_tarifa(entrada, salida, tarifa_base=20.0, tarifa_excedente=10.0):
+    if not entrada or not salida:
+        raise ValueError("La hora de entrada y salida deben estar definidas.")
 
-    if duracion <= 60:
+    # Duración total en minutos
+    duracion_total = (salida - entrada).total_seconds() / 60
+
+    # Primera hora: siempre tarifa base
+    if duracion_total <= 60:
         return tarifa_base
-    else:
-        excedente = duracion - 60
-        return tarifa_base + (excedente * tarifa_excedente)
+
+    # Calcular horas excedentes completas
+    horas_excedentes = (duracion_total - 60) // 60
+    return tarifa_base + (horas_excedentes * tarifa_excedente)
 
 
 def validar_salida(db: Session, ticket_id: int):
@@ -157,3 +157,27 @@ def validar_salida(db: Session, ticket_id: int):
     ticket.estado = "Completado"
     db.commit()
     return {"valid": True, "message": "Salida autorizada"}
+
+
+def obtener_configuracion(db: Session):
+    config = db.query(ConfiguracionSistema).first()
+    if not config:
+        # Configuración por defecto
+        config = ConfiguracionSistema()
+        db.add(config)
+        db.commit()
+        db.refresh(config)
+    return config
+
+
+def actualizar_configuracion(db: Session, nueva_config: dict):
+    config = db.query(ConfiguracionSistema).first()
+    if not config:
+        config = ConfiguracionSistema(**nueva_config)
+        db.add(config)
+    else:
+        for key, value in nueva_config.items():
+            setattr(config, key, value)
+    db.commit()
+    db.refresh(config)
+    return config

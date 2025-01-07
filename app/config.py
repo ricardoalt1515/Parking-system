@@ -1,4 +1,12 @@
+import os
 from pydantic import BaseModel
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./estacionamiento.db")
+
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 class ConfiguracionSistema(BaseModel):
@@ -8,13 +16,3 @@ class ConfiguracionSistema(BaseModel):
 
 
 configuracion_actual = ConfiguracionSistema()
-
-
-def obtener_configuracion():
-    return configuracion_actual
-
-
-def actualizar_configuracion(nueva_config: ConfiguracionSistema):
-    global configuracion_actual
-    configuracion_actual = nueva_config
-    return configuracion_actual

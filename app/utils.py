@@ -1,4 +1,5 @@
 import datetime
+from .config import SessionLocal
 
 
 def calcular_tarifa(entrada, salida, tarifa_base, tarifa_excedente):

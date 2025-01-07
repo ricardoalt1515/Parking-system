@@ -1,39 +1,30 @@
-version: "3.9"
-
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
+    container_name: backend
+    # Enlaza el puerto 8000 del contenedor con el 8000 de tu host
     ports:
       - "8000:8000"
+    # Monta un volumen para que el archivo estacionamiento.db se persista
     volumes:
-      - ./app:/app/app # Permite cambios en caliente
-    depends_on:
-      - db
+      - estacionamiento_data:/app
+    restart: always
 
   frontend:
     build:
-      context: .
+      context: ./frontend
       dockerfile: Dockerfile.frontend
+    container_name: frontend
+    # Enlaza el puerto 3000 del contenedor con el 3000 de tu host
     ports:
       - "3000:3000"
-    volumes:
-      - ./estacionamiento-frontend:/app
     depends_on:
       - backend
-
-  db:
-    image: postgres:15
-    container_name: postgres_container
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: adminpassword
-      POSTGRES_DB: parking_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    restart: always
 
 volumes:
-  postgres_data:
+  estacionamiento_data:

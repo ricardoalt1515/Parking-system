@@ -1,5 +1,7 @@
+from app.schemas import TarifaBase
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey
-from .database import Base
+from .config import SessionLocal
+from .database import Base, engine
 from datetime import datetime, timezone
 from sqlalchemy.orm import relationship
 
@@ -35,3 +37,12 @@ class Auditoria(Base):
     fecha = Column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )  # Fecha y hora de la acción
+
+
+class ConfiguracionSistema(Base):
+    __tablename__ = "configuracion_sistema"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tarifa_base = Column(Float, default=20.0)
+    tarifa_excedente = Column(Float, default=10.0)
+    tiempo_limite_salida = Column(Integer, default=15)
