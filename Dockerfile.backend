@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Establece el directorio de trabajo
 WORKDIR /app
 
+# Copiar el archivo SQLite al contenedor (quitar si fall algo)
+COPY estacionamiento.db /app/estacionamiento.db
+
 # Copia los archivos de dependencias
 COPY requirements.txt ./requirements.txt
 
