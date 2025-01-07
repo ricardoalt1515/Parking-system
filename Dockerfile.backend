@@ -16,6 +16,10 @@ WORKDIR /app
 # Copiar el archivo SQLite al contenedor (quitar si fall algo)
 COPY estacionamiento.db /app/estacionamiento.db
 
+# Añade el directorio actual al PYTHONPATH
+ENV PYTHONPATH=/app
+
+
 # Copia los archivos de dependencias
 COPY requirements.txt ./requirements.txt
 
