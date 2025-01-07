@@ -5,6 +5,18 @@ build/
 dist/
 wheels/
 *.egg-info
-estacionamiento-frontend/
 # Virtual environments
 .venv
+.env
+
+# archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos de docker
+*.log
+db.sqlite3
+
+# archivos de compilacion de frontend
+frontend/.next/
+frontend/out/
